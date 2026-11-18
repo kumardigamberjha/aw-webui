@@ -2,6 +2,7 @@ import { isEqual } from 'lodash';
 import { setActivePinia, createPinia } from 'pinia';
 
 import { useCategoryStore } from '~/stores/categories';
+import { useSettingsStore } from '~/stores/settings';
 import { createMissingParents, defaultCategories, Category } from '~/util/classes';
 
 describe('categories store', () => {
@@ -156,5 +157,170 @@ describe('categories store', () => {
 
     expect(decoded).toEqual(42);
     expect(encoded).toEqual(42);
+  });
+
+  describe('classRules / moveClassRule', () => {
+    test('classRules is flat and only includes regex rules, in classes order', () => {
+      categoryStore.load([
+        { name: ['A'], rule: { type: 'regex', regex: 'a' } },
+        { name: ['Group'], rule: { type: 'none' } },
+        { name: ['Group', 'B'], rule: { type: 'regex', regex: 'b' } },
+      ]);
+      expect(categoryStore.classRules.map(c => c.name)).toEqual([['A'], ['Group', 'B']]);
+    });
+
+    test('moveClassRule swaps a rule with its adjacent sibling in the same set', () => {
+      categoryStore.category_sets = [
+        {
+          id: 'default',
+          categories: [
+            { name: ['First'], rule: { type: 'regex', regex: 'a' } },
+            { name: ['Second'], rule: { type: 'regex', regex: 'b' } },
+          ],
+        },
+      ];
+      categoryStore.active_set_ids = ['default'];
+      categoryStore.classes = categoryStore.category_sets[0].categories.map((c, i) => ({
+        ...c,
+        id: i,
+      }));
+
+      categoryStore.moveClassRule(['Second'], 'up');
+
+      expect(categoryStore.category_sets[0].categories.map(c => c.name)).toEqual([
+        ['Second'],
+        ['First'],
+      ]);
+      expect(categoryStore.classes_unsaved_changes).toBe(true);
+    });
+
+    test('moveClassRule is a no-op at the top of the list', () => {
+      categoryStore.category_sets = [
+        {
+          id: 'default',
+          categories: [
+            { name: ['First'], rule: { type: 'regex', regex: 'a' } },
+            { name: ['Second'], rule: { type: 'regex', regex: 'b' } },
+          ],
+        },
+      ];
+      categoryStore.active_set_ids = ['default'];
+      categoryStore.classes = categoryStore.category_sets[0].categories.map((c, i) => ({
+        ...c,
+        id: i,
+      }));
+
+      categoryStore.moveClassRule(['First'], 'up');
+
+      expect(categoryStore.category_sets[0].categories.map(c => c.name)).toEqual([
+        ['First'],
+        ['Second'],
+      ]);
+    });
+  });
+
+  describe('ensureLeafClassMigration', () => {
+    const settingsStore = useSettingsStore();
+
+    beforeEach(() => {
+      jest.restoreAllMocks();
+      settingsStore.$patch({ leaf_class_migration_applied: false });
+      categoryStore.category_sets = [];
+      categoryStore.active_set_ids = ['default'];
+      jest.spyOn(settingsStore, 'ensureLoaded').mockResolvedValue(undefined);
+      jest.spyOn(settingsStore, 'update').mockImplementation(async (patch: Record<string, any>) => {
+        settingsStore.$patch(patch);
+      });
+      jest.spyOn(categoryStore, 'save').mockReturnValue(undefined);
+    });
+
+    test('runs once and applies the mapping to matching leaves in the primary set', async () => {
+      categoryStore.category_sets = [
+        {
+          id: 'default',
+          categories: [
+            { name: ['Work', 'Chat & Messaging'], rule: { type: 'regex', regex: 'slack' } },
+            { name: ['Media', 'Video'], rule: { type: 'regex', regex: 'YouTube' } },
+          ],
+        },
+      ];
+      categoryStore.active_set_ids = ['default'];
+      categoryStore.classes = categoryStore.category_sets[0].categories.map((c, i) => ({
+        ...c,
+        id: i,
+      }));
+
+      await categoryStore.ensureLeafClassMigration();
+
+      const chat = categoryStore.classes.find(c => c.name.join('') === 'WorkChat & Messaging');
+      const video = categoryStore.classes.find(c => c.name.join('') === 'MediaVideo');
+      expect(chat?.data?.class).toBe('operational');
+      expect(video?.data?.class).toBe('distraction');
+      expect(settingsStore.leaf_class_migration_applied).toBe(true);
+    });
+
+    test('second call is a no-op (guard respected) — does not re-apply over a later user edit', async () => {
+      categoryStore.category_sets = [
+        {
+          id: 'default',
+          categories: [{ name: ['Media', 'Video'], rule: { type: 'regex', regex: 'YouTube' } }],
+        },
+      ];
+      categoryStore.active_set_ids = ['default'];
+      categoryStore.classes = categoryStore.category_sets[0].categories.map((c, i) => ({
+        ...c,
+        id: i,
+      }));
+
+      await categoryStore.ensureLeafClassMigration();
+      expect(categoryStore.classes.find(c => c.name.join('') === 'MediaVideo')?.data?.class).toBe(
+        'distraction'
+      );
+
+      // User deliberately unsets the class afterward.
+      const videoId = categoryStore.classes.find(c => c.name.join('') === 'MediaVideo').id;
+      categoryStore.updateClass({
+        id: videoId,
+        name: ['Media', 'Video'],
+        rule: { type: 'regex', regex: 'YouTube' },
+        data: {},
+      });
+      expect(
+        categoryStore.classes.find(c => c.name.join('') === 'MediaVideo')?.data?.class
+      ).toBeUndefined();
+
+      // Simulate a later app load: settings still say the migration already ran.
+      await categoryStore.ensureLeafClassMigration();
+
+      expect(
+        categoryStore.classes.find(c => c.name.join('') === 'MediaVideo')?.data?.class
+      ).toBeUndefined();
+    });
+
+    test('prunes an orphaned, inactive "Focus" CategorySet', async () => {
+      categoryStore.category_sets = [
+        { id: 'default', categories: [] },
+        { id: 'Focus', categories: [{ name: ['X'], rule: { type: 'none' } }] },
+      ];
+      categoryStore.active_set_ids = ['default'];
+      categoryStore.classes = [];
+
+      await categoryStore.ensureLeafClassMigration();
+
+      expect(categoryStore.category_sets.map(s => s.id)).toEqual(['default']);
+    });
+
+    test('preserves a custom inactive set that is not literally named "Focus"', async () => {
+      categoryStore.category_sets = [
+        { id: 'default', categories: [] },
+        { id: 'personal', categories: [] },
+      ];
+      categoryStore.active_set_ids = ['default'];
+      categoryStore.classes = [];
+
+      await categoryStore.ensureLeafClassMigration();
+
+      expect(categoryStore.category_sets.map(s => s.id)).toEqual(['default', 'personal']);
+    });
   });
 });

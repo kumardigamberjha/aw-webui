@@ -70,6 +70,72 @@ div
       b-btn.float-right(@click="saveClasses", variant="success" :disabled="!classes_unsaved_changes")
         | Save
 
+  // Focus Insights class rules — a flat, priority-ordered view of the same
+  // categoryStore data as the tree above, specifically for assigning the
+  // Focus/Operational/Distraction class the dashboard's metrics read. Order
+  // here is the actual match order (first-match-wins), unlike the tree's
+  // deepest-match-wins semantics — see moveClassRule()'s doc comment.
+  div.mt-4
+    div.d-flex.align-items-center.flex-wrap
+      h5.mb-0 Focus Insights class rules
+      small.text-muted.ml-2 Assigns app/title time to Focus, Operational, or Distraction for the dashboard
+    p.small.text-muted.mt-1
+      | Checked top to bottom — the first rule whose pattern matches wins. Reorder with the arrows if two rules could both match the same app.
+
+    div.my-3.p-3.bg-light.rounded
+      div.font-weight-bold.mb-2 Add rule
+      div.d-flex.flex-wrap(style="gap: 0.5rem;")
+        b-form-input(v-model="newRule.name" placeholder="Name (e.g. Slack)" size="sm" style="max-width: 200px")
+        b-form-input(v-model="newRule.regex" placeholder="Regex pattern (e.g. Slack)" size="sm" style="max-width: 240px")
+        b-select(v-model="newRule.class" :options="classRuleOptions" size="sm" style="max-width: 160px")
+        b-btn(@click="addClassRule" variant="primary" size="sm" :disabled="!newRule.name || !newRule.regex")
+          icon.mr-1(name="plus")
+          | Add
+      div.text-danger.small.mt-1(v-if="addRuleError") {{ addRuleError }}
+
+    b-table(
+      :items="classRuleRows"
+      :fields="classRuleFields"
+      small
+      hover
+      show-empty
+      empty-text="No class rules yet — add one above, or check Settings if the Focus Insights seed hasn't run."
+    )
+      template(#cell(order)="row")
+        div.d-flex.flex-column
+          b-btn.p-0.border-0(
+            variant="link" size="sm"
+            :disabled="row.index === 0"
+            @click="categoryStore.moveClassRule(row.item.name, 'up')"
+            title="Move up"
+          )
+            icon(name="caret-up")
+          b-btn.p-0.border-0(
+            variant="link" size="sm"
+            :disabled="row.index === classRuleRows.length - 1"
+            @click="categoryStore.moveClassRule(row.item.name, 'down')"
+            title="Move down"
+          )
+            icon(name="caret-down")
+      template(#cell(path)="row") {{ row.item.name.join(' > ') }}
+      template(#cell(regex)="row")
+        code {{ row.item.rule.regex }}
+      template(#cell(class)="row")
+        b-select(
+          :value="(row.item.data && row.item.data.class) || null"
+          :options="classRuleOptions"
+          size="sm"
+          style="min-width: 150px"
+          @change="setRuleClass(row.item, $event)"
+        )
+      template(#cell(color)="row")
+        icon(v-if="row.item.data && row.item.data.color" name="circle" :style="'color: ' + row.item.data.color")
+      template(#cell(actions)="row")
+        b-btn.border-0(size="sm", variant="outline-secondary", @click="showEditModal(row.item.id)" pill)
+          icon(name="edit")
+        b-btn.ml-1.border-0(size="sm", variant="outline-danger", @click="removeClassRule(row.item)" pill)
+          icon(name="trash")
+
   // Category Builder sits at the end of the categories list (above the
   // ActivePatternSettings panel below the group). Collapsed by default
   // so the words query doesn't fire for users who only came to edit
@@ -98,8 +164,14 @@ import CategoryEditModal from '~/components/CategoryEditModal.vue';
 import 'vue-awesome/icons/undo';
 import 'vue-awesome/icons/angle-double-down';
 import 'vue-awesome/icons/angle-double-up';
+import 'vue-awesome/icons/caret-up';
+import 'vue-awesome/icons/caret-down';
+import 'vue-awesome/icons/circle';
+import 'vue-awesome/icons/edit';
+import 'vue-awesome/icons/trash';
 
 import { useCategoryStore } from '~/stores/categories';
+import { Category } from '~/util/classes';
 
 import _ from 'lodash';
 import { downloadFile } from '~/util/export';
@@ -121,10 +193,33 @@ export default {
     activeSetId: 'default',
     builderOpen: false,
     builderMounted: false,
+    newRule: { name: '', regex: '', class: null },
+    addRuleError: '',
   }),
   computed: {
     ...mapState(useCategoryStore, ['classes_unsaved_changes']),
-    ...mapGetters(useCategoryStore, ['classes_hierarchy']),
+    ...mapGetters(useCategoryStore, ['classes_hierarchy', 'classRules']),
+    classRuleOptions() {
+      return [
+        { value: null, text: 'Unset' },
+        { value: 'focus', text: 'Focus' },
+        { value: 'operational', text: 'Operational' },
+        { value: 'distraction', text: 'Distraction' },
+      ];
+    },
+    classRuleFields() {
+      return [
+        { key: 'order', label: '' },
+        { key: 'path', label: 'Category path' },
+        { key: 'regex', label: 'Pattern' },
+        { key: 'class', label: 'Class' },
+        { key: 'color', label: 'Color' },
+        { key: 'actions', label: '' },
+      ];
+    },
+    classRuleRows() {
+      return this.classRules;
+    },
   },
   watch: {
     builderOpen(v: boolean) {
@@ -186,6 +281,37 @@ export default {
     hideEditModal: function () {
       this.editingId = null;
     },
+    showEditModal: function (id: number) {
+      this.editingId = id;
+    },
+    addClassRule: function () {
+      this.addRuleError = '';
+      const name = this.newRule.name.trim();
+      if (!name || !this.newRule.regex) return;
+      if (this.categoryStore.all_categories.some((c: string[]) => c.join('') === name)) {
+        this.addRuleError = `A category named "${name}" already exists.`;
+        return;
+      }
+      this.categoryStore.addClass({
+        name: [name],
+        rule: { type: 'regex', regex: this.newRule.regex, ignore_case: true },
+        data: this.newRule.class ? { class: this.newRule.class } : {},
+      });
+      this.categoryStore.save();
+      this.newRule = { name: '', regex: '', class: null };
+    },
+    setRuleClass: function (category, cls: string | null) {
+      this.categoryStore.updateClass({
+        ...category,
+        data: { ...category.data, class: cls || undefined },
+      });
+      this.categoryStore.save();
+    },
+    removeClassRule: function (category) {
+      if (!confirm(`Delete the rule for "${category.name.join(' > ')}"?`)) return;
+      this.categoryStore.removeClass(category.id);
+      this.categoryStore.save();
+    },
     exportClasses: async function () {
       console.log('Exporting categories...');
 
@@ -226,7 +352,24 @@ export default {
         }
         const existing = this.categoryStore.category_sets.find(s => s.id === setId);
         if (existing) {
-          existing.categories = import_obj.categories;
+          const replace = confirm(
+            `A category set named "${setId}" already has ${existing.categories.length} rule(s).\n\n` +
+              `Click OK to REPLACE it with the ${import_obj.categories.length} rule(s) from this file.\n` +
+              `Click Cancel to MERGE instead — the file's rules are added, but any existing rule with ` +
+              `the same category name is kept as-is.`
+          );
+          if (replace) {
+            existing.categories = import_obj.categories;
+          } else {
+            const existingNames = new Set(
+              existing.categories.map((c: Category) => c.name.join('>>>>'))
+            );
+            for (const importedCat of import_obj.categories) {
+              if (!existingNames.has(importedCat.name.join('>>>>'))) {
+                existing.categories.push(importedCat);
+              }
+            }
+          }
           // If importing into the active set, don't call switchToSet — it would call
           // syncToPrimarySet first and overwrite the just-imported categories with
           // stale in-memory classes. Use discardChanges to recompute from the updated set.

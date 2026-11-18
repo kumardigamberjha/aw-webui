@@ -8,11 +8,11 @@ describe('router', () => {
     expect(rootRoute.redirect({})).toBe('/work-report');
   });
 
-  test('root redirect falls back to /home when localStorage landingpage is missing', () => {
+  test('root redirect falls back to /dashboard when localStorage landingpage is missing', () => {
     const rootRoute = router.options.routes.find(route => route.path === '/');
 
     delete localStorage.landingpage;
-    expect(rootRoute.redirect({})).toBe('/home');
+    expect(rootRoute.redirect({})).toBe('/dashboard');
   });
 
   test('includes the work report route', () => {

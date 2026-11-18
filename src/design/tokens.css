@@ -1,0 +1,120 @@
+/*
+ * AW Focus Insights design tokens.
+ *
+ * Scope: only the new dashboard + gallery routes (elements carrying
+ * `data-theme="light"|"dark"`, set by DashboardShell.vue). Does not touch
+ * global app chrome or the existing static/dark.css toggle.
+ *
+ * Theme is resolved the same way as the rest of the app (useSettingsStore().theme,
+ * 'auto' via detectPreferredTheme() from ~/util/theme) — see DashboardShell.vue.
+ */
+
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
+:root {
+  /* ---- Raw neutral ramp (zinc-based, light -> dark) ---- */
+  --zinc-50: #fafafa;
+  --zinc-100: #f4f4f5;
+  --zinc-200: #e4e4e7;
+  --zinc-300: #d4d4d8;
+  --zinc-400: #a1a1aa;
+  --zinc-500: #71717a;
+  --zinc-600: #52525b;
+  --zinc-700: #3f3f46;
+  --zinc-800: #27272a;
+  --zinc-900: #18181b;
+  --zinc-950: #09090b;
+
+  /* ---- Spacing scale: 4/8/12/16/24/32/48. Nothing else. ---- */
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+
+  /* ---- Radius ---- */
+  --radius-card: 6px;
+  --radius-input: 4px;
+  --radius-pill: 999px;
+
+  /* ---- Type scale ---- */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-size-11: 11px;
+  --font-size-12: 12px;
+  --font-size-13: 13px;
+  --font-size-14: 14px;
+  --font-size-16: 16px;
+  --font-size-20: 20px;
+  --font-size-28: 28px;
+  --font-size-36: 36px;
+
+  /* ---- Elevation: borders over shadows, max one shadow level ---- */
+  --border-width: 1px;
+  --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+
+  /* ---- Motion: hover/draw-in only, nothing longer ---- */
+  --transition-fast: 150ms ease;
+
+  /* ==== Light theme (default) ==== */
+  --bg: var(--zinc-50);
+  --surface: #ffffff;
+  --fg: var(--zinc-900);
+  --muted-fg: var(--zinc-500);
+  --border: var(--zinc-200);
+  --border-strong: var(--zinc-300);
+
+  /* Single accent — interactive elements only, never decorative */
+  --accent: #2a78d6;
+  --accent-fg: #ffffff;
+
+  /* Semantic state colors — state only, never decorative.
+     "uncategorized" (5th metrics class) intentionally has no dedicated hue;
+     it reads as neutral (--muted-fg / --zinc-400) rather than inventing a 5th color. */
+  --state-focus: #008300;
+  --state-operational: #c98500;
+  --state-distraction: #e34948;
+  --state-idle: var(--zinc-400);
+
+  /* Semantic delta colors (Stat primitive) — direction is neutral by default;
+     good/bad only applied when the metric's semantics say so (caller-supplied). */
+  --delta-good: #008300;
+  --delta-bad: #e34948;
+  --delta-neutral: var(--muted-fg);
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+[data-theme='dark'] {
+  --bg: var(--zinc-950);
+  --surface: var(--zinc-900);
+  --fg: var(--zinc-100);
+  --muted-fg: var(--zinc-400);
+  --border: var(--zinc-800);
+  --border-strong: var(--zinc-700);
+
+  --accent: #3b82f6;
+  --accent-fg: #ffffff;
+
+  --state-focus: #16a34a;
+  --state-operational: #d97706;
+  --state-distraction: #dc2626;
+  --state-idle: var(--zinc-600);
+
+  --delta-good: #16a34a;
+  --delta-bad: #dc2626;
+  --delta-neutral: var(--muted-fg);
+
+  --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+/* Tabular numerals on every number in the UI — apply this class wherever a
+   value is rendered (primitives that render numbers apply it internally). */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

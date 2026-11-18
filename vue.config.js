@@ -86,5 +86,8 @@ export default {
     // can be string or regex
     'vis-data',
     'vis-timeline',
+    'core-js',
+    'activitywatch',
+    'aw-client',
   ],
 };

@@ -15,6 +15,8 @@ import {
 } from '~/util/classes';
 import { getColorFromCategory } from '~/util/color';
 import { defineStore } from 'pinia';
+import { useSettingsStore } from '~/stores/settings';
+import { migrateLeafClasses, pruneOrphanedFocusSet } from '~/util/categoryClassMigration';
 
 interface State {
   classes: Category[];
@@ -100,6 +102,18 @@ export const useCategoryStore = defineStore('categories', {
     classes_hierarchy() {
       const hier = build_category_hierarchy(_.cloneDeep(this.classes));
       return _.sortBy(hier, [c => c.id || 0]);
+    },
+    /**
+     * Flat, ordered list of regex rules — the same rules the Focus Insights
+     * classifier (makeClassifier, via classes.ts's matchString) matches
+     * against. Matching itself is deepest-category-wins, not order-dependent;
+     * this array's order only matters for display and as the tie-break when
+     * two rules match at equal depth. Powers the flat rule table in
+     * Settings > Categorization, as opposed to classes_hierarchy's nested tree
+     * view of the same data.
+     */
+    classRules(): Category[] {
+      return this.classes.filter(c => c.rule && c.rule.type === 'regex');
     },
     classes_for_query(): [string[], Rule][] {
       return this.classes
@@ -216,6 +230,44 @@ export const useCategoryStore = defineStore('categories', {
       // Also update legacy flat classes field for backwards compatibility
       saveClasses(this.classes);
       this.classes_unsaved_changes = false;
+    },
+
+    /**
+     * One-time reconciliation of Focus Insights `data.class` assignments onto
+     * the user's existing category tree (see src/util/categoryClassMigration.ts
+     * for the exact mapping and why it's needed — in short: earlier seeding
+     * left broad, unclassed legacy categories shadowing more specific,
+     * correctly-classed ones, and a couple of leaves ended up with the wrong
+     * class). Also prunes a genuinely orphaned, never-active "Focus"
+     * CategorySet discovered during that investigation.
+     *
+     * Runs at most once ever — guarded by settings.leaf_class_migration_applied
+     * so it never re-applies over a user's own subsequent edits. Edits the
+     * primary active set in place (not a new CategorySet), consistent with how
+     * syncToPrimarySet()/save() expect exactly one set to be the edit target.
+     */
+    async ensureLeafClassMigration(this: State) {
+      const settingsStore = useSettingsStore();
+      await settingsStore.ensureLoaded();
+      if (settingsStore.leaf_class_migration_applied) {
+        return;
+      }
+
+      this.category_sets = pruneOrphanedFocusSet(this.category_sets, this.active_set_ids);
+      const primaryId = this.active_set_ids[0] || 'default';
+      const primarySet = this.category_sets.find(s => s.id === primaryId);
+      if (primarySet) {
+        primarySet.categories = migrateLeafClasses(primarySet.categories);
+      }
+
+      this.classes = computeEffectiveClasses(this.category_sets, this.active_set_ids);
+      // Same persistence `save()` does — not calling `this.save()` directly since
+      // this action's `this: State` typing doesn't expose sibling actions.
+      saveCategories(this.category_sets, this.active_set_ids);
+      saveClasses(this.classes);
+      this.classes_unsaved_changes = false;
+
+      await settingsStore.update({ leaf_class_migration_applied: true });
     },
 
     // ── Category set management ──────────────────────────────────────────────
@@ -363,6 +415,32 @@ export const useCategoryStore = defineStore('categories', {
         cat.rule.regex += '|' + pattern;
       }
       this.classes_unsaved_changes = true;
+    },
+    /**
+     * Move a rule up/down within its own CategorySet's stored order. The
+     * Focus Insights classifier matches by deepest-category-wins (see
+     * classes.ts's matchString), so this order only affects display and the
+     * tie-break between two rules matching at equal depth. Only reorders
+     * within the set that owns the rule (matched by category name, since ids
+     * are reassigned on every merge and aren't stable across sets); a no-op
+     * at the start/end of that set's own list. Cross-set reordering isn't
+     * supported — a rule's set membership doesn't change, only its position
+     * among its own set's siblings.
+     */
+    moveClassRule(this: State, categoryName: string[], direction: 'up' | 'down') {
+      for (const set of this.category_sets) {
+        const idx = set.categories.findIndex(c => _.isEqual(c.name, categoryName));
+        if (idx === -1) continue;
+        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= set.categories.length) return;
+        [set.categories[idx], set.categories[targetIdx]] = [
+          set.categories[targetIdx],
+          set.categories[idx],
+        ];
+        this.classes = computeEffectiveClasses(this.category_sets, this.active_set_ids);
+        this.classes_unsaved_changes = true;
+        return;
+      }
     },
     restoreDefaultClasses(this: State) {
       this.classes = assignIds(createMissingParents(defaultCategories));

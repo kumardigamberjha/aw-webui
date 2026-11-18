@@ -5,6 +5,7 @@ import { Category, CategorySet, defaultCategories, cleanCategory } from '~/util/
 import { SavedQuery } from '~/util/savedQueries';
 import { View, defaultViews } from '~/stores/views';
 import type { PrivacyFilterRule } from '~/util/privacyFilters';
+import { AiClassificationConfig, defaultAiClassificationConfig } from '~/util/aiClassification';
 import { isEqual } from 'lodash';
 
 function jsonEq(a: any, b: any) {
@@ -50,6 +51,12 @@ interface State {
   always_active_pattern: string;
   privacy_filters: PrivacyFilterRule[];
   classes: Category[];
+  // True once the leaf-class migration/cleanup (src/util/categoryClassMigration.ts)
+  // has run: seeds sensible Focus Insights classes onto known default leaves,
+  // corrects previously-misassigned ones, and prunes the orphaned "Focus"
+  // CategorySet. Runs at most once ever, so it never re-applies over a user's
+  // own edits.
+  leaf_class_migration_applied: boolean;
   // Named category sets — each set is an independent collection of category rules.
   // The active_set_ids list controls which sets are combined (in priority order).
   category_sets: CategorySet[];
@@ -57,6 +64,11 @@ interface State {
   active_set_ids: string[];
   views: View[];
   saved_queries: SavedQuery[];
+
+  // Optional local-LLM classification tier for ambiguous domains (see
+  // src/util/aiClassification.ts). Disabled by default — must not be a hard
+  // dependency for anyone cloning the repo without Ollama running.
+  aiClassification: AiClassificationConfig;
 
   // Whether to show certain WIP features
   devmode: boolean;
@@ -76,7 +88,7 @@ export const useSettingsStore = defineStore('settings', {
     startOfWeek: 'Monday',
     durationDefault: 4 * 60 * 60,
     useColorFallback: false,
-    landingpage: '/home',
+    landingpage: '/dashboard',
 
     theme: 'auto',
 
@@ -100,10 +112,13 @@ export const useSettingsStore = defineStore('settings', {
     always_active_pattern: '',
     privacy_filters: [],
     classes: defaultCategories,
+    leaf_class_migration_applied: false,
     category_sets: [],
     active_set_ids: ['default'],
     views: defaultViews,
     saved_queries: [],
+
+    aiClassification: { ...defaultAiClassificationConfig },
 
     // Developer settings
     // NOTE: PRODUCTION might be undefined (in tests, for example)

@@ -450,6 +450,29 @@ export function categoryQuery(
   return querystr_to_array(q);
 }
 
+// Query for the productivity dashboard (src/views/ProductivityDashboard.vue).
+// Returns raw event arrays; all metric math happens client-side in
+// src/util/metrics.ts:
+//   active_events — window events intersected with not-afk periods
+//   afk_events    — all AFK-bucket events (both statuses), for idle/wallclock coverage
+//   web_events    — browser events intersected with browser-active window time
+export function dashboardQuery(params: DesktopQueryParams): string[] {
+  const q = `
+    events = flood(${queryBucket(params.bid_window)});
+    afk_events = flood(${queryBucket(params.bid_afk)});
+    not_afk = filter_keyvals(afk_events, "status", ["not-afk"]);
+    ${
+      params.bid_browsers && params.bid_browsers.length > 0
+        ? browserEvents(params)
+        : 'browser_events = [];'
+    }
+    active_events = filter_period_intersect(events, not_afk);
+    active_events = sort_by_timestamp(active_events);
+    RETURN = {"active_events": active_events, "afk_events": afk_events, "web_events": browser_events};
+  `;
+  return querystr_to_array(q);
+}
+
 export default {
   fullDesktopQuery,
   multideviceQuery,
@@ -458,4 +481,5 @@ export default {
   activityQueryAndroid,
   categoryQuery,
   editorActivityQuery,
+  dashboardQuery,
 };

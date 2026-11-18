@@ -7,9 +7,13 @@ const CLASSIFY_KEYS = ['app', 'title'];
 const UNCATEGORIZED = ['Uncategorized'];
 
 export interface Rule {
-  type: 'regex' | 'none';
+  type: 'regex' | 'none' | 'aiTitle';
   regex?: string;
   ignore_case?: boolean;
+  // Exact normalized-title match, used only by 'aiTitle' rules (see
+  // src/util/aiClassification.ts). Never a regex — compared with strict
+  // equality against normalizeTitle(event.title).
+  pattern?: string;
 }
 
 export interface Category {
@@ -51,7 +55,13 @@ export function mergeCategorySets(sets: CategorySet[]): Category[] {
 
 const COLOR_UNCAT = '#CCC';
 
-// The default categories
+// The default categories. Leaves under Work/Programming, Work, Media, and
+// Comms carry a `data.class` ('focus'|'operational'|'distraction') so a fresh
+// install gets working Focus Insights dashboard metrics immediately — the
+// same mapping src/util/categoryClassMigration.ts reconciles onto an existing,
+// possibly-customized tree. Top-level organizational buckets (Work/Media/Comms)
+// and leaves with no sensible universal default (Image/Video/Audio/3D/Document
+// Viewers/Drafting Tools) intentionally carry no class.
 // Should be run through createMissingParents before being used in most cases.
 export const defaultCategories: Category[] = [
   {
@@ -70,10 +80,80 @@ export const defaultCategories: Category[] = [
     name: ['Work', 'Programming', 'ActivityWatch'],
     rule: { type: 'regex', regex: 'ActivityWatch|aw-', ignore_case: true },
   },
+  {
+    name: ['Work', 'Programming', 'Editors & IDEs'],
+    rule: {
+      type: 'regex',
+      regex: 'code|cursor|vscodium|pycharm|intellij|webstorm|jetbrains|antigravity',
+      ignore_case: true,
+    },
+    data: { class: 'focus' },
+  },
+  {
+    name: ['Work', 'Programming', 'Terminals & Shells'],
+    rule: { type: 'regex', regex: 'terminal|tmux|nvim|vim', ignore_case: true },
+    data: { class: 'focus' },
+  },
+  {
+    name: ['Work', 'Programming', 'Repos & Debugging'],
+    rule: { type: 'regex', regex: 'github|gitlab|stackoverflow|bitbucket', ignore_case: true },
+    data: { class: 'focus' },
+  },
+  {
+    name: ['Work', 'Programming', 'Local Dev & APIs'],
+    rule: {
+      type: 'regex',
+      regex: 'localhost|localhost:\\d+|docs|127\\.0\\.0\\.1',
+      ignore_case: true,
+    },
+    data: { class: 'focus' },
+  },
   { name: ['Work', 'Image'], rule: { type: 'regex', regex: 'GIMP|Inkscape' } },
   { name: ['Work', 'Video'], rule: { type: 'regex', regex: 'Kdenlive' } },
   { name: ['Work', 'Audio'], rule: { type: 'regex', regex: 'Audacity' } },
   { name: ['Work', '3D'], rule: { type: 'regex', regex: 'Blender' } },
+  {
+    name: ['Work', 'Document Viewers'],
+    rule: { type: 'regex', regex: 'evince|okular|atril|zathura|mupdf', ignore_case: true },
+  },
+  {
+    name: ['Work', 'Drafting Tools'],
+    rule: { type: 'regex', regex: 'org\\.gnome\\.TextEditor|gedit|kate', ignore_case: true },
+  },
+  {
+    name: ['Work', 'Chat & Messaging'],
+    rule: { type: 'regex', regex: 'whatsapp|slack|discord|telegram|skype', ignore_case: true },
+    data: { class: 'operational' },
+  },
+  {
+    name: ['Work', 'Emails'],
+    rule: { type: 'regex', regex: 'gmail|outlook|thunderbird', ignore_case: true },
+    data: { class: 'operational' },
+  },
+  {
+    name: ['Work', 'Meetings & Video'],
+    rule: { type: 'regex', regex: 'zoom|meet|teams', ignore_case: true },
+    data: { class: 'operational' },
+  },
+  {
+    name: ['Work', 'Project Management'],
+    rule: { type: 'regex', regex: 'jira|trello|asana|clickup|notion|linear', ignore_case: true },
+    data: { class: 'operational' },
+  },
+  {
+    name: ['Work', 'Scheduling'],
+    rule: { type: 'regex', regex: 'calendar', ignore_case: true },
+    data: { class: 'operational' },
+  },
+  {
+    name: ['Work', 'Office Suite'],
+    rule: {
+      type: 'regex',
+      regex: 'soffice|libreoffice-writer|libreoffice-calc|libreoffice-impress',
+      ignore_case: true,
+    },
+    data: { class: 'operational' },
+  },
   {
     name: ['Media'],
     rule: { type: 'none' },
@@ -82,12 +162,12 @@ export const defaultCategories: Category[] = [
   {
     name: ['Media', 'Games'],
     rule: { type: 'regex', regex: 'Minecraft|RimWorld' },
-    data: { color: '#F80' },
+    data: { color: '#F80', class: 'distraction' },
   },
   {
     name: ['Media', 'Video'],
     rule: { type: 'regex', regex: 'YouTube|Plex|VLC' },
-    data: { color: '#F33' },
+    data: { color: '#F33', class: 'distraction' },
   },
   {
     name: ['Media', 'Social Media'],
@@ -96,7 +176,7 @@ export const defaultCategories: Category[] = [
       regex: 'reddit|Facebook|Twitter|Instagram|devRant',
       ignore_case: true,
     },
-    data: { color: '#FCC400' },
+    data: { color: '#FCC400', class: 'distraction' },
   },
   {
     name: ['Media', 'Music'],
@@ -105,7 +185,7 @@ export const defaultCategories: Category[] = [
       regex: 'Spotify|Deezer',
       ignore_case: true,
     },
-    data: { color: '#A8FC00' },
+    data: { color: '#A8FC00', class: 'distraction' },
   },
   {
     name: ['Comms'],
@@ -119,8 +199,13 @@ export const defaultCategories: Category[] = [
       regex:
         'Messenger|Telegram|Signal|WhatsApp|Rambox|Slack|Riot|Element|Discord|Nheko|NeoChat|Mattermost',
     },
+    data: { class: 'operational' },
   },
-  { name: ['Comms', 'Email'], rule: { type: 'regex', regex: 'Gmail|Thunderbird|mutt|alpine' } },
+  {
+    name: ['Comms', 'Email'],
+    rule: { type: 'regex', regex: 'Gmail|Thunderbird|mutt|alpine' },
+    data: { class: 'operational' },
+  },
   { name: ['Uncategorized'], rule: { type: null }, data: { color: COLOR_UNCAT } },
 ];
 

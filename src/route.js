@@ -19,6 +19,8 @@ const Settings = () => import('./views/settings/Settings.vue');
 // pulling a second copy into a separate chunk.
 const Stopwatch = () => import('./views/Stopwatch.vue');
 const WorkReport = () => import('./views/WorkReport.vue');
+const ProductivityDashboard = () => import('./views/ProductivityDashboard.vue');
+const DesignSystemGallery = () => import('./views/DesignSystemGallery.vue');
 const Alerts = () => import('./views/Alerts.vue');
 const Search = () => import('./views/Search.vue');
 const Report = () => import('./views/Report.vue');
@@ -34,7 +36,7 @@ const router = new VueRouter({
     {
       path: '/',
       redirect: _to => {
-        return localStorage.landingpage || '/home';
+        return localStorage.landingpage || '/dashboard';
       },
     },
     { path: '/home', component: Home },
@@ -82,6 +84,8 @@ const router = new VueRouter({
     },
     { path: '/stopwatch', component: Stopwatch },
     { path: '/work-report', component: WorkReport },
+    { path: '/dashboard', component: ProductivityDashboard },
+    { path: '/design-system', component: DesignSystemGallery, meta: { fullContainer: true } },
     { path: '/search', component: Search },
     { path: '/graph', component: Graph },
     { path: '/dev', component: Dev },

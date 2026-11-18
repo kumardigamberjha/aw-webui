@@ -39,6 +39,11 @@ div(:class="{'fixed-top-padding': fixedTopMenu}")
             icon(name="stream")
             | Timeline
 
+        b-nav-item(to="/dashboard")
+          div.px-2.px-lg-1
+            icon(name="chart-line")
+            | Dashboard
+
         b-nav-item(to="/stopwatch")
           div.px-2.px-lg-1
             icon(name="stopwatch")

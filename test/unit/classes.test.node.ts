@@ -37,3 +37,39 @@ test('matches events to category', () => {
   expect(events[1].data.$category).toEqual(testClasses[0].name);
   expect(events[2].data.$category).toEqual(['Uncategorized']);
 });
+
+test('data.class survives cleanCategory and a JSON export/import round-trip', () => {
+  const cat: Category = {
+    id: 5,
+    name: ['Slack'],
+    rule: { type: 'regex', regex: 'Slack', ignore_case: true },
+    data: { color: '#c98500', class: 'operational' },
+    // Fields cleanCategory should strip
+    children: [],
+    parent: [],
+    subname: 'Slack',
+    name_pretty: 'Slack',
+    depth: 0,
+  };
+
+  const cleaned = classes.cleanCategory(cat);
+  expect(cleaned.data.class).toBe('operational');
+  expect(cleaned.children).toBeUndefined();
+
+  // Simulate the export-to-file / import-from-file round trip (JSON.stringify
+  // for download, JSON.parse on re-upload) that CategorizationSettings.vue does.
+  const roundTripped = JSON.parse(JSON.stringify(cleaned));
+  expect(roundTripped.data.class).toBe('operational');
+  expect(roundTripped.rule.regex).toBe('Slack');
+  expect(roundTripped.name).toEqual(['Slack']);
+});
+
+test('a category with no class set round-trips as unset (not coerced to a default)', () => {
+  const cat: Category = {
+    name: ['Unclassified App'],
+    rule: { type: 'regex', regex: 'foo' },
+    data: { color: '#000000' },
+  };
+  const roundTripped = JSON.parse(JSON.stringify(classes.cleanCategory(cat)));
+  expect(roundTripped.data.class).toBeUndefined();
+});

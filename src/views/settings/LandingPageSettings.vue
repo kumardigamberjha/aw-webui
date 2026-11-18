@@ -5,6 +5,7 @@ div
       h5.mt-1.mb-2.mb-sm-0 Landing page
     div
       b-select.landingpage(v-if="loaded" size="sm" :value="landingpage", @change="landingpage = $event")
+        option(value="/dashboard") Dashboard
         option(value="/home") Home
         option(:value="'/activity/' + hostname + '/view/'" v-for="hostname in hostnames") Activity ({{hostname}})
         option(value="/timeline") Timeline
@@ -31,7 +32,7 @@ export default {
     landingpage: {
       get: function () {
         const settingsStore = useSettingsStore();
-        return settingsStore.landingpage || '/home';
+        return settingsStore.landingpage || '/dashboard';
       },
       set: function (val) {
         const settingsStore = useSettingsStore();

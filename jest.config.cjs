@@ -22,6 +22,10 @@ module.exports = {
       },
       moduleFileExtensions: ['js', 'ts', 'vue', 'json'],
       modulePathIgnorePatterns: ['test/e2e/screenshot.test.js'], // Don't run this file in npm test
+      // Nested git worktrees under .claude/worktrees/ have their own test/ dirs;
+      // the leading `**` in testMatch would otherwise pick those up too and run
+      // stale/duplicate copies of every test alongside the real ones.
+      testPathIgnorePatterns: ['/node_modules/', '<rootDir>/\\.claude/'],
     },
     {
       displayName: 'node',
@@ -38,6 +42,7 @@ module.exports = {
         '^~/(.+)$': '<rootDir>/src/$1',
         '^d3$': '<rootDir>/node_modules/d3/dist/d3.min',
       },
+      testPathIgnorePatterns: ['/node_modules/', '<rootDir>/\\.claude/'],
     },
   ],
 };

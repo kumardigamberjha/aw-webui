@@ -27,6 +27,12 @@ b-modal(id="edit" ref="edit" title="Edit category" @show="resetModal" @hidden="h
 
   hr
   div.my-1
+    b Focus Insights class
+    small.text-muted.d-block.mb-1 Which dashboard metric this app's time counts toward. Unset time is excluded from the Focus Score.
+    b-select(v-model="editing.class", :options="classOptions")
+
+  hr
+  div.my-1
     b Color
 
     b-form-checkbox(v-model="editing.inherit_color" switch)
@@ -79,6 +85,7 @@ export default {
         color: null,
         inherit_score: true,
         score: null,
+        class: null,
       },
     };
   },
@@ -86,6 +93,14 @@ export default {
     ...mapState(useCategoryStore, {
       allCategories: state => [{ value: [], text: 'None' }].concat(state.allCategoriesSelect),
     }),
+    classOptions: function () {
+      return [
+        { value: null, text: 'Unset' },
+        { value: 'focus', text: 'Focus' },
+        { value: 'operational', text: 'Operational' },
+        { value: 'distraction', text: 'Distraction' },
+      ];
+    },
     allRuleTypes: function () {
       return [
         { value: 'none', text: 'None' },
@@ -152,6 +167,7 @@ export default {
         data: {
           color: this.editing.inherit_color === true ? undefined : this.editing.color,
           score: this.editing.inherit_score === true ? undefined : this.editing.score,
+          class: this.editing.class || undefined,
         },
       };
       this.categoryStore.updateClass(new_class);
@@ -176,6 +192,7 @@ export default {
         inherit_color,
         score,
         inherit_score,
+        class: (cat.data && cat.data.class) || null,
       };
     },
   },
